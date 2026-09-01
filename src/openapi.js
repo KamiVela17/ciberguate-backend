@@ -24,10 +24,13 @@ const riskSchema = {
   },
 };
 
+const listEndpoint = (tag, description) => ({ get: { tags: [tag], security: [{ bearerAuth: [] }], responses: { 200: { description } } } });
+
 export const openapi = {
   openapi: '3.0.3',
   info: { title: 'CiberGuate IA API', version: '1.0.0', description: 'Inventario, evaluación NIST y priorización de riesgos.' },
   servers: [{ url: '/' }],
+  components: { securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } } },
   paths: {
     '/health': { get: { tags: ['Sistema'], responses: { 200: { description: 'Servicio saludable' } } } },
     '/api/v1/assets': {
@@ -46,5 +49,16 @@ export const openapi = {
     '/api/v1/dashboard': { get: { tags: ['Analítica'], responses: { 200: { description: 'Resumen ejecutivo' } } } },
     '/api/v1/recommendations': { get: { tags: ['Analítica'], responses: { 200: { description: 'Recomendaciones priorizadas' } } } },
     '/api/v1/reports/executive.pdf': { get: { tags: ['Reportes'], responses: { 200: { description: 'Informe PDF', content: { 'application/pdf': {} } } } } },
+    '/api/v1/security/overview': listEndpoint('Analítica', 'Postura operativa consolidada'),
+    '/api/v1/scans': listEndpoint('Diagnóstico', 'Diagnósticos automáticos y hallazgos'),
+    '/api/v1/monitors': listEndpoint('Monitoreo', 'Objetivos y disponibilidad continua'),
+    '/api/v1/alerts': listEndpoint('SOC', 'Alertas inteligentes correlacionadas'),
+    '/api/v1/compliance': listEndpoint('Cumplimiento', 'Evaluación multiestándar y evidencia'),
+    '/api/v1/documents': listEndpoint('Documentos', 'Repositorio de evidencias'),
+    '/api/v1/events': listEndpoint('SIEM', 'Eventos de seguridad consolidados'),
+    '/api/v1/incidents': listEndpoint('Incidentes', 'Gestión y respuesta de incidentes'),
+    '/api/v1/ai/analysis': listEndpoint('Inteligencia artificial', 'Predicción y recomendaciones inteligentes'),
+    '/api/v1/reports/monthly': listEndpoint('Reportes', 'Archivo mensual automático'),
+    '/api/v1/audit-logs': listEndpoint('Zero Trust', 'Bitácora de acciones sensibles'),
   },
 };

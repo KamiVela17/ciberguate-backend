@@ -1,5 +1,11 @@
 # CiberGuate Backend
 
+El MVP incluye diagnóstico web autorizado, monitoreo automático, alertas,
+evaluación ISO 27001/NIST/CIS/OWASP/MITRE, gestión documental, eventos SIEM,
+incidentes, playbooks de respuesta, reportes mensuales, MFA TOTP, OAuth2/OIDC
+configurable y auditoría. `OPENAI_API_KEY` activa el proveedor generativo; si no
+está configurada, la API identifica y utiliza el motor analítico local.
+
 API Node.js 22 con Express, Sequelize, PostgreSQL, Swagger y PDFKit. El pipeline
 ejecuta pruebas y auditoría; en `main` publica una imagen ECR con etiqueta igual
 al SHA completo del commit y actualiza el overlay `dev` del repositorio GitOps.

@@ -1,4 +1,5 @@
 import cors from 'cors';
+import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import express from 'express';
 import helmet from 'helmet';
@@ -10,6 +11,8 @@ import { openapi } from './openapi.js';
 import { buildRecommendations } from './services/recommendations.js';
 import { buildExecutiveReport } from './services/report.js';
 import { calculateRisk, normalizeNistFunction } from './services/risk.js';
+import { createTotpSecret, totpUri, verifyTotp } from './services/totp.js';
+import { registerPlatformRoutes } from './platform.js';
 
 const asyncHandler = (handler) => (request, response, next) => Promise.resolve(handler(request, response, next)).catch(next);
 const notFound = (message) => Object.assign(new Error(message), { status: 404 });
@@ -45,7 +48,7 @@ function riskPayload(body) {
 }
 
 export function createApp({ models, database }) {
-  const { User, Asset, RiskAssessment } = models;
+  const { User, Asset, RiskAssessment, MfaSetting } = models;
   const app = express();
   const allowedOrigins = (process.env.CORS_ORIGINS ?? 'http://localhost:3000').split(',').map((value) => value.trim());
 
@@ -60,17 +63,53 @@ export function createApp({ models, database }) {
     response.json({ status: 'healthy' });
   }));
 
+  const signAccessToken = (user) => jwt.sign({ sub: String(user.id), email: user.email, role: user.role }, process.env.JWT_SECRET, { expiresIn: '8h', issuer: 'ciberguate-api', audience: 'ciberguate-web' });
+
   app.post('/api/v1/auth/login', asyncHandler(async (request, response) => {
     const email = String(request.body.email ?? '').trim().toLowerCase();
     const password = String(request.body.password ?? '');
-    const user = email ? await User.findOne({ where: { email } }) : null;
+    const user = email ? await User.findOne({ where: { email }, include: [{ model: MfaSetting, as: 'mfa', required: false }] }) : null;
     if (!user || !await bcrypt.compare(password, user.password_hash)) {
       return response.status(401).json({ detail: 'Correo o contraseña incorrectos' });
     }
     const signingKey = process.env.JWT_SECRET;
     if (!signingKey) throw new Error('JWT_SECRET no está configurado');
-    const token = jwt.sign({ sub: String(user.id), email: user.email, role: user.role }, signingKey, { expiresIn: '8h', issuer: 'ciberguate-api', audience: 'ciberguate-web' });
+    if (user.mfa?.enabled) {
+      const mfaToken = jwt.sign({ sub: String(user.id), purpose: 'mfa-login' }, signingKey, { expiresIn: '5m', issuer: 'ciberguate-api', audience: 'ciberguate-mfa' });
+      return response.json({ mfa_required: true, mfa_token: mfaToken });
+    }
+    const token = signAccessToken(user);
     return response.json({ access_token: token, token_type: 'Bearer', expires_in: 28800, user: { email: user.email, display_name: user.display_name, role: user.role } });
+  }));
+
+  app.post('/api/v1/auth/mfa/verify-login', asyncHandler(async (request, response) => {
+    let payload;
+    try { payload = jwt.verify(request.body.mfa_token ?? '', process.env.JWT_SECRET ?? '', { issuer: 'ciberguate-api', audience: 'ciberguate-mfa' }); } catch { return response.status(401).json({ detail: 'Desafío MFA inválido o vencido' }); }
+    if (payload.purpose !== 'mfa-login') return response.status(401).json({ detail: 'Desafío MFA inválido' });
+    const user = await User.findByPk(payload.sub, { include: [{ model: MfaSetting, as: 'mfa', required: true }] });
+    if (!user || !verifyTotp(user.mfa.secret, request.body.code)) return response.status(401).json({ detail: 'Código MFA incorrecto' });
+    return response.json({ access_token: signAccessToken(user), token_type: 'Bearer', expires_in: 28800, user: { email: user.email, display_name: user.display_name, role: user.role } });
+  }));
+
+  app.get('/api/v1/auth/oauth/config', asyncHandler(async (_request, response) => {
+    if (!process.env.OIDC_ISSUER || !process.env.OIDC_CLIENT_ID || !process.env.OIDC_REDIRECT_URI) return response.json({ enabled: false });
+    const discovery = await fetch(`${process.env.OIDC_ISSUER.replace(/\/$/, '')}/.well-known/openid-configuration`, { signal: AbortSignal.timeout(10000) }).then((result) => result.json());
+    const state = jwt.sign({ purpose: 'oidc-login', nonce: crypto.randomBytes(16).toString('hex') }, process.env.JWT_SECRET, { expiresIn: '10m', issuer: 'ciberguate-api', audience: 'ciberguate-oidc' });
+    const authorization = new URL(discovery.authorization_endpoint);
+    authorization.search = new URLSearchParams({ client_id: process.env.OIDC_CLIENT_ID, redirect_uri: process.env.OIDC_REDIRECT_URI, response_type: 'code', scope: 'openid email profile', state }).toString();
+    response.json({ enabled: true, authorization_url: authorization.toString() });
+  }));
+
+  app.post('/api/v1/auth/oauth/callback', asyncHandler(async (request, response) => {
+    try { jwt.verify(request.body.state ?? '', process.env.JWT_SECRET ?? '', { issuer: 'ciberguate-api', audience: 'ciberguate-oidc' }); } catch { return response.status(401).json({ detail: 'Estado OAuth2 inválido o vencido' }); }
+    const discovery = await fetch(`${process.env.OIDC_ISSUER.replace(/\/$/, '')}/.well-known/openid-configuration`, { signal: AbortSignal.timeout(10000) }).then((result) => result.json());
+    const tokenResponse = await fetch(discovery.token_endpoint, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'authorization_code', code: request.body.code, client_id: process.env.OIDC_CLIENT_ID, client_secret: process.env.OIDC_CLIENT_SECRET ?? '', redirect_uri: process.env.OIDC_REDIRECT_URI }), signal: AbortSignal.timeout(15000) });
+    if (!tokenResponse.ok) return response.status(401).json({ detail: 'El proveedor OAuth2 rechazó el código' });
+    const tokens = await tokenResponse.json();
+    const profile = await fetch(discovery.userinfo_endpoint, { headers: { Authorization: `Bearer ${tokens.access_token}` }, signal: AbortSignal.timeout(10000) }).then((result) => result.json());
+    if (!profile.email) return response.status(400).json({ detail: 'El proveedor no entregó un correo electrónico' });
+    const [user] = await User.findOrCreate({ where: { email: String(profile.email).toLowerCase() }, defaults: { password_hash: await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 12), display_name: profile.name ?? profile.email, role: 'analyst' } });
+    response.json({ access_token: signAccessToken(user), token_type: 'Bearer', expires_in: 28800, user: { email: user.email, display_name: user.display_name, role: user.role } });
   }));
 
   app.use('/api/v1', asyncHandler(async (request, response, next) => {
@@ -88,6 +127,22 @@ export function createApp({ models, database }) {
     const user = await User.findByPk(request.user.sub, { attributes: ['email', 'display_name', 'role'] });
     if (!user) return response.status(401).json({ detail: 'Usuario no disponible' });
     return response.json(user);
+  }));
+  app.post('/api/v1/auth/mfa/setup', asyncHandler(async (request, response) => {
+    const user = await User.findByPk(request.user.sub);
+    const secret = createTotpSecret();
+    const [setting] = await MfaSetting.findOrCreate({ where: { user_id: user.id }, defaults: { secret, enabled: false, recovery_codes: [] } });
+    if (setting.secret !== secret) await setting.update({ secret, enabled: false });
+    response.json({ secret, otpauth_uri: totpUri(secret, user.email) });
+  }));
+  app.post('/api/v1/auth/mfa/enable', asyncHandler(async (request, response) => {
+    const setting = await MfaSetting.findOne({ where: { user_id: request.user.sub } });
+    if (!setting || !verifyTotp(setting.secret, request.body.code)) return response.status(400).json({ detail: 'Código MFA incorrecto' });
+    await setting.update({ enabled: true }); response.json({ enabled: true });
+  }));
+  app.post('/api/v1/auth/mfa/disable', asyncHandler(async (request, response) => {
+    const setting = await MfaSetting.findOne({ where: { user_id: request.user.sub } });
+    if (setting) await setting.update({ enabled: false }); response.json({ enabled: false });
   }));
 
   app.get('/api/v1/assets', asyncHandler(async (_request, response) => {
@@ -166,6 +221,8 @@ export function createApp({ models, database }) {
     response.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': 'attachment; filename="informe-ejecutivo-riesgos.pdf"', 'Content-Length': report.length });
     response.send(report);
   }));
+
+  registerPlatformRoutes(app, models);
 
   app.use((_request, response) => response.status(404).json({ detail: 'Ruta no encontrada' }));
   app.use((error, _request, response, _next) => {

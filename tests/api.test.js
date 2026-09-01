@@ -46,4 +46,28 @@ describe('API del MVP', () => {
     await request(app).get('/api/v1/assets').expect(401);
     await request(app).post('/api/v1/auth/login').send({ email: 'admin@example.test', password: 'incorrecta' }).expect(401);
   });
+
+  it('opera cumplimiento, documentos, SIEM, alertas, incidentes e inteligencia analítica', async () => {
+    const control = await models.ComplianceControl.create({ framework: 'ISO 27001', code: 'A.8.8', title: 'Gestión de vulnerabilidades', status: 'Pendiente', score: 0 });
+    await request(app).put(`/api/v1/compliance/${control.id}`).set('Authorization', authorization).send({ status: 'Implementado', evidence: 'Acta de revisión aprobada' }).expect(200);
+    const compliance = await request(app).get('/api/v1/compliance').set('Authorization', authorization).expect(200);
+    expect(compliance.body).toMatchObject({ overall_score: 100 });
+
+    await request(app).post('/api/v1/documents').set('Authorization', authorization).send({ name: 'Política institucional', category: 'Política', content: 'Contenido aprobado por el comité.' }).expect(201);
+    const documents = await request(app).get('/api/v1/documents').set('Authorization', authorization).expect(200);
+    expect(documents.body).toHaveLength(1);
+    expect(documents.body[0]).not.toHaveProperty('content');
+
+    await request(app).post('/api/v1/events').set('Authorization', authorization).send({ source: 'WAF', event_type: 'Ataque bloqueado', severity: 'Alta', description: 'Patrón de inyección detectado' }).expect(201);
+    const alerts = await request(app).get('/api/v1/alerts').set('Authorization', authorization).expect(200);
+    expect(alerts.body[0]).toMatchObject({ severity: 'Alta', source: 'SIEM: WAF' });
+
+    const incident = await request(app).post('/api/v1/incidents').set('Authorization', authorization).send({ title: 'Actividad web anómala', severity: 'Alta', description: 'Investigar solicitudes bloqueadas', assigned_to: 'SOC' }).expect(201);
+    await request(app).post(`/api/v1/incidents/${incident.body.id}/respond`).set('Authorization', authorization).send({ action_type: 'Bloqueo preventivo' }).expect(201);
+    const incidents = await request(app).get('/api/v1/incidents').set('Authorization', authorization).expect(200);
+    expect(incidents.body[0]).toMatchObject({ status: 'Contenido' });
+
+    const analysis = await request(app).get('/api/v1/ai/analysis').set('Authorization', authorization).expect(200);
+    expect(analysis.body).toEqual(expect.objectContaining({ mode: 'motor-analitico-local', attack_probability: expect.any(Number), recommendations: expect.any(Array) }));
+  });
 });

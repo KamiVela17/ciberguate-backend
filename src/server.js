@@ -4,6 +4,7 @@ import { createApp } from './app.js';
 import { sequelize } from './config/database.js';
 import { defineModels } from './models/index.js';
 import { seedDatabase } from './seed.js';
+import { startAutomation } from './platform.js';
 
 const port = Number(process.env.PORT ?? 8000);
 const models = defineModels(sequelize);
@@ -26,6 +27,7 @@ await connectWithRetry();
 if ((process.env.SEED_DATA ?? 'true').toLowerCase() === 'true') await seedDatabase(models);
 
 const app = createApp({ models, database: sequelize });
+startAutomation(models);
 const server = app.listen(port, '0.0.0.0', () => console.log(`CiberGuate IA API escuchando en el puerto ${port}`));
 
 async function shutdown() {
