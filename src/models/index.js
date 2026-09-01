@@ -1,6 +1,14 @@
 import { DataTypes } from 'sequelize';
 
 export function defineModels(database) {
+  const User = database.define('users', {
+    id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
+    email: { type: DataTypes.STRING(180), allowNull: false, unique: true, validate: { isEmail: true } },
+    password_hash: { type: DataTypes.STRING(100), allowNull: false },
+    display_name: { type: DataTypes.STRING(120), allowNull: false },
+    role: { type: DataTypes.STRING(30), allowNull: false, defaultValue: 'admin' },
+  });
+
   const Asset = database.define('assets', {
     id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
     name: { type: DataTypes.STRING(180), allowNull: false, validate: { len: [2, 180] } },
@@ -31,5 +39,5 @@ export function defineModels(database) {
   Asset.hasMany(RiskAssessment, { as: 'risks', foreignKey: 'asset_id', onDelete: 'CASCADE' });
   RiskAssessment.belongsTo(Asset, { as: 'asset', foreignKey: { name: 'asset_id', allowNull: false }, onDelete: 'CASCADE' });
 
-  return { Asset, RiskAssessment };
+  return { User, Asset, RiskAssessment };
 }

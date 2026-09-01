@@ -1,6 +1,8 @@
 import cors from 'cors';
+import bcrypt from 'bcryptjs';
 import express from 'express';
 import helmet from 'helmet';
+import jwt from 'jsonwebtoken';
 import { Op, ValidationError } from 'sequelize';
 import swaggerUi from 'swagger-ui-express';
 
@@ -43,7 +45,7 @@ function riskPayload(body) {
 }
 
 export function createApp({ models, database }) {
-  const { Asset, RiskAssessment } = models;
+  const { User, Asset, RiskAssessment } = models;
   const app = express();
   const allowedOrigins = (process.env.CORS_ORIGINS ?? 'http://localhost:3000').split(',').map((value) => value.trim());
 
@@ -56,6 +58,36 @@ export function createApp({ models, database }) {
   app.get('/health', asyncHandler(async (_request, response) => {
     await database.authenticate();
     response.json({ status: 'healthy' });
+  }));
+
+  app.post('/api/v1/auth/login', asyncHandler(async (request, response) => {
+    const email = String(request.body.email ?? '').trim().toLowerCase();
+    const password = String(request.body.password ?? '');
+    const user = email ? await User.findOne({ where: { email } }) : null;
+    if (!user || !await bcrypt.compare(password, user.password_hash)) {
+      return response.status(401).json({ detail: 'Correo o contraseña incorrectos' });
+    }
+    const signingKey = process.env.JWT_SECRET;
+    if (!signingKey) throw new Error('JWT_SECRET no está configurado');
+    const token = jwt.sign({ sub: String(user.id), email: user.email, role: user.role }, signingKey, { expiresIn: '8h', issuer: 'ciberguate-api', audience: 'ciberguate-web' });
+    return response.json({ access_token: token, token_type: 'Bearer', expires_in: 28800, user: { email: user.email, display_name: user.display_name, role: user.role } });
+  }));
+
+  app.use('/api/v1', asyncHandler(async (request, response, next) => {
+    const token = request.headers.authorization?.match(/^Bearer (.+)$/i)?.[1];
+    try {
+      const payload = jwt.verify(token ?? '', process.env.JWT_SECRET ?? '', { issuer: 'ciberguate-api', audience: 'ciberguate-web' });
+      request.user = payload;
+      next();
+    } catch {
+      response.status(401).json({ detail: 'Autenticación requerida' });
+    }
+  }));
+
+  app.get('/api/v1/auth/me', asyncHandler(async (request, response) => {
+    const user = await User.findByPk(request.user.sub, { attributes: ['email', 'display_name', 'role'] });
+    if (!user) return response.status(401).json({ detail: 'Usuario no disponible' });
+    return response.json(user);
   }));
 
   app.get('/api/v1/assets', asyncHandler(async (_request, response) => {

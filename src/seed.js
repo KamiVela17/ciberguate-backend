@@ -1,4 +1,16 @@
-export async function seedDatabase({ Asset, RiskAssessment }) {
+import bcrypt from 'bcryptjs';
+
+export async function seedDatabase({ User, Asset, RiskAssessment }) {
+  const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (adminEmail && adminPassword && !await User.findOne({ where: { email: adminEmail } })) {
+    await User.create({
+      email: adminEmail,
+      password_hash: await bcrypt.hash(adminPassword, 12),
+      display_name: 'Administrador CiberGuate',
+      role: 'admin',
+    });
+  }
   if (await Asset.count() > 0) return;
   const assets = await Asset.bulkCreate([
     { name: 'Portal de servicios ciudadanos', asset_type: 'Aplicación', owner: 'Tecnología', location: 'AWS Guatemala', criticality: 5, status: 'Activo' },
