@@ -11,5 +11,8 @@ npm run dev
 ```
 
 Swagger queda disponible en `/docs` y la comprobación de salud en `/health`.
+El login se realiza en `POST /api/v1/auth/login`; las demás rutas de negocio
+requieren un token Bearer. Configure `ADMIN_EMAIL`, `ADMIN_PASSWORD` y
+`JWT_SECRET` mediante variables de entorno o Secrets Manager.
 Variables del repositorio GitHub: `AWS_REGION`, `ECR_REPOSITORY` y
 `GITOPS_REPOSITORY`. Secretos: `AWS_ROLE_ARN` y `GITOPS_DEPLOY_KEY`.
