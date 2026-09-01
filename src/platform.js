@@ -104,6 +104,25 @@ export function registerPlatformRoutes(app, models) {
     await control.update({ status, score: Number(request.body.score ?? defaultScore), evidence: request.body.evidence ?? control.evidence, owner: request.body.owner ?? control.owner, reviewed_at: new Date() });
     await audit(models, request, 'CONTROL_REVIEWED', `${control.framework}:${control.code}`, { status: control.status, score: control.score }); response.json(control);
   }));
+  app.post('/api/v1/compliance/automatic-assessment', asyncHandler(async (request, response) => {
+    const [assets, risks, scans, monitors, events, incidents, mfaEnabled] = await Promise.all([Asset.count(), RiskAssessment.count(), VulnerabilityScan.count(), Monitor.count(), SecurityEvent.count(), Incident.count(), models.MfaSetting.count({ where: { enabled: true } })]);
+    const evidence = {
+      'A.5.1': [75, 'Política y bitácora de auditoría disponibles'], 'A.5.23': [monitors + scans > 0 ? 75 : 25, `${monitors} monitores y ${scans} diagnósticos cloud`],
+      'A.8.8': [scans > 0 ? 100 : 0, `${scans} diagnósticos de vulnerabilidades registrados`], 'GV.RM-01': [risks > 0 ? 100 : 0, `${risks} riesgos evaluados`],
+      'ID.AM-01': [assets > 0 ? 100 : 0, `${assets} activos inventariados`], 'DE.CM-01': [monitors > 0 ? 100 : 0, `${monitors} servicios en monitoreo continuo`],
+      'CIS-1': [assets > 0 ? 100 : 0, `${assets} activos controlados`], 'CIS-7': [scans > 0 ? 100 : 0, `${scans} evaluaciones técnicas`],
+      'A01:2021': [mfaEnabled > 0 ? 100 : 70, `JWT activo; ${mfaEnabled} usuarios con MFA`], 'A05:2021': [scans > 0 ? 75 : 25, `${scans} comprobaciones de configuración web`],
+      'TA0001': [events > 0 ? 75 : 25, `${events} eventos correlacionados por SIEM`], 'TA0040': [incidents > 0 ? 75 : 25, `${incidents} incidentes gestionados`],
+    };
+    const controls = await ComplianceControl.findAll();
+    for (const control of controls) {
+      const [score, automaticEvidence] = evidence[control.code] ?? [control.score, 'Sin regla automática para este control'];
+      const status = score >= 90 ? 'Implementado' : score >= 40 ? 'Parcial' : 'Pendiente';
+      await control.update({ score, status, evidence: `Evaluación automática: ${automaticEvidence}`, reviewed_at: new Date() });
+    }
+    await audit(models, request, 'AUTOMATIC_COMPLIANCE_ASSESSMENT', 'compliance', { controls: controls.length });
+    response.json({ evaluated_controls: controls.length, evaluated_at: new Date() });
+  }));
 
   app.get('/api/v1/documents', asyncHandler(async (_request, response) => response.json(await EvidenceDocument.findAll({ attributes: { exclude: ['content'] }, order: [['createdAt', 'DESC']] }))));
   app.post('/api/v1/documents', asyncHandler(async (request, response) => {

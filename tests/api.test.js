@@ -2,7 +2,7 @@ import bcrypt from 'bcryptjs';
 import { newDb } from 'pg-mem';
 import { Sequelize } from 'sequelize';
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../src/app.js';
 import { defineModels } from '../src/models/index.js';
@@ -52,6 +52,12 @@ describe('API del MVP', () => {
     await request(app).put(`/api/v1/compliance/${control.id}`).set('Authorization', authorization).send({ status: 'Implementado', evidence: 'Acta de revisión aprobada' }).expect(200);
     const compliance = await request(app).get('/api/v1/compliance').set('Authorization', authorization).expect(200);
     expect(compliance.body).toMatchObject({ overall_score: 100 });
+
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 200, headers: { 'content-security-policy': "default-src 'self'", 'strict-transport-security': 'max-age=31536000', 'x-content-type-options': 'nosniff', 'x-frame-options': 'DENY', 'referrer-policy': 'no-referrer', 'permissions-policy': 'camera=()' } })));
+    await request(app).post('/api/v1/scans').set('Authorization', authorization).send({ target: 'https://example.test' }).expect(201);
+    vi.unstubAllGlobals();
+    const automatic = await request(app).post('/api/v1/compliance/automatic-assessment').set('Authorization', authorization).expect(200);
+    expect(automatic.body.evaluated_controls).toBe(1);
 
     await request(app).post('/api/v1/documents').set('Authorization', authorization).send({ name: 'Política institucional', category: 'Política', content: 'Contenido aprobado por el comité.' }).expect(201);
     const documents = await request(app).get('/api/v1/documents').set('Authorization', authorization).expect(200);
