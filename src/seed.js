@@ -3,8 +3,13 @@ import bcrypt from 'bcryptjs';
 export async function seedDatabase({ User, Asset, RiskAssessment, ComplianceControl, Alert, SecurityEvent, Incident, EvidenceDocument }) {
   const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
   const adminPassword = process.env.ADMIN_PASSWORD;
-  if (adminEmail && adminPassword && !await User.findOne({ where: { email: adminEmail } })) {
-    await User.create({ email: adminEmail, password_hash: await bcrypt.hash(adminPassword, 12), display_name: 'Administrador CiberGuate', role: 'admin' });
+  if (adminEmail && adminPassword) {
+    const admin = await User.findOne({ where: { email: adminEmail } });
+    if (!admin) {
+      await User.create({ email: adminEmail, password_hash: await bcrypt.hash(adminPassword, 12), display_name: 'Administrador CiberGuate', role: 'admin' });
+    } else if (!await bcrypt.compare(adminPassword, admin.password_hash)) {
+      await admin.update({ password_hash: await bcrypt.hash(adminPassword, 12) });
+    }
   }
 
   if (await Asset.count() === 0) {
