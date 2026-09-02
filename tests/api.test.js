@@ -85,4 +85,11 @@ describe('API del MVP', () => {
     const analysis = await request(app).get('/api/v1/ai/analysis').set('Authorization', authorization).expect(200);
     expect(analysis.body).toEqual(expect.objectContaining({ mode: 'motor-analitico-local', attack_probability: expect.any(Number), recommendations: expect.any(Array) }));
   });
+
+  it('permite al usuario autenticado cambiar su contraseña', async () => {
+    await request(app).post('/api/v1/auth/change-password').set('Authorization', authorization).send({ current_password: 'incorrecta', new_password: 'nueva-clave-segura' }).expect(401);
+    await request(app).post('/api/v1/auth/change-password').set('Authorization', authorization).send({ current_password: 'correct-horse-battery-staple', new_password: 'nueva-clave-segura' }).expect(200);
+    await request(app).post('/api/v1/auth/login').send({ email: 'admin@example.test', password: 'correct-horse-battery-staple' }).expect(401);
+    await request(app).post('/api/v1/auth/login').send({ email: 'admin@example.test', password: 'nueva-clave-segura' }).expect(200);
+  });
 });

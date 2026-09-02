@@ -41,6 +41,7 @@ export const openapi = {
         responses: { 200: { description: 'Sesión JWT o desafío MFA' }, 401: { description: 'Credenciales incorrectas' } },
       },
     },
+    '/api/v1/auth/change-password': { post: { tags: ['Autenticación'], summary: 'Cambiar contraseña del usuario autenticado', responses: { 200: { description: 'Contraseña actualizada' }, 400: { description: 'Contraseña débil' }, 401: { description: 'Contraseña actual incorrecta' } } } },
     '/api/v1/assets': {
       get: { tags: ['Activos'], responses: { 200: { description: 'Inventario de activos' } } },
       post: { tags: ['Activos'], requestBody: { required: true, content: { 'application/json': { schema: assetSchema } } }, responses: { 201: { description: 'Activo creado' } } },

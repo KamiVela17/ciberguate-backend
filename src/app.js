@@ -131,6 +131,16 @@ export function createApp({ models, database }) {
     if (!user) return response.status(401).json({ detail: 'Usuario no disponible' });
     return response.json(user);
   }));
+  app.post('/api/v1/auth/change-password', asyncHandler(async (request, response) => {
+    const currentPassword = String(request.body.current_password ?? '');
+    const newPassword = String(request.body.new_password ?? '');
+    if (newPassword.length < 8) return response.status(400).json({ detail: 'La nueva contraseña debe tener al menos 8 caracteres' });
+    const user = await User.findByPk(request.user.sub);
+    if (!user || !await bcrypt.compare(currentPassword, user.password_hash)) return response.status(401).json({ detail: 'La contraseña actual es incorrecta' });
+    await user.update({ password_hash: await bcrypt.hash(newPassword, 12) });
+    await recordAudit(request, 'PASSWORD_CHANGED', `user:${user.id}`);
+    response.json({ changed: true });
+  }));
   app.post('/api/v1/auth/mfa/setup', asyncHandler(async (request, response) => {
     const user = await User.findByPk(request.user.sub);
     const secret = createTotpSecret();
