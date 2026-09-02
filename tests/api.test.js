@@ -36,6 +36,7 @@ describe('API del MVP', () => {
     expect(recommendations.body[0].framework).toBe('NIST RC.RP / CIS 11');
     const report = await request(app).get('/api/v1/reports/executive.pdf').set('Authorization', authorization).expect('Content-Type', /pdf/).expect(200);
     expect(report.body.subarray(0, 4).toString()).toBe('%PDF');
+    expect(report.body.length).toBeGreaterThan(7_000);
   });
 
   it('rechaza un riesgo asociado a un activo inexistente', async () => {

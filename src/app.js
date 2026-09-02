@@ -9,7 +9,7 @@ import swaggerUi from 'swagger-ui-express';
 
 import { openapi } from './openapi.js';
 import { buildRecommendations } from './services/recommendations.js';
-import { buildExecutiveReport } from './services/report.js';
+import { buildExecutiveReport, collectExecutiveReportData } from './services/report.js';
 import { calculateRisk, normalizeNistFunction } from './services/risk.js';
 import { createTotpSecret, totpUri, verifyTotp } from './services/totp.js';
 import { registerPlatformRoutes } from './platform.js';
@@ -231,8 +231,7 @@ export function createApp({ models, database }) {
     response.json(buildRecommendations(risks));
   }));
   app.get('/api/v1/reports/executive.pdf', asyncHandler(async (_request, response) => {
-    const [assets, risks] = await Promise.all([Asset.findAll(), RiskAssessment.findAll({ include: [{ model: Asset, as: 'asset', attributes: ['name'] }] })]);
-    const report = await buildExecutiveReport(assets, risks, buildRecommendations(risks));
+    const report = await buildExecutiveReport(await collectExecutiveReportData(models));
     response.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': 'attachment; filename="informe-ejecutivo-riesgos.pdf"', 'Content-Length': report.length });
     response.send(report);
   }));

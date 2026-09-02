@@ -2,8 +2,7 @@ import { Op } from 'sequelize';
 
 import { analyzeSecurityPosture } from './services/ai.js';
 import { scanWebTarget, validateTarget } from './services/scanner.js';
-import { buildExecutiveReport } from './services/report.js';
-import { buildRecommendations } from './services/recommendations.js';
+import { buildExecutiveReport, collectExecutiveReportData } from './services/report.js';
 
 const asyncHandler = (handler) => (request, response, next) => Promise.resolve(handler(request, response, next)).catch(next);
 const notFound = (message) => Object.assign(new Error(message), { status: 404 });
@@ -167,10 +166,11 @@ export function startAutomation(models) {
       const monitors = await models.Monitor.findAll({ where: { enabled: true, [Op.or]: [{ next_check_at: null }, { next_check_at: { [Op.lte]: new Date() } }] } });
       await Promise.all(monitors.map((monitor) => executeMonitor(models, monitor)));
       const period = new Date().toISOString().slice(0, 7);
-      if (!await models.ReportSnapshot.findOne({ where: { period } })) {
-        const [assets, risks] = await Promise.all([models.Asset.findAll(), models.RiskAssessment.findAll({ include: [{ model: models.Asset, as: 'asset', attributes: ['name'] }] })]);
-        const content = await buildExecutiveReport(assets, risks, buildRecommendations(risks));
-        await models.ReportSnapshot.create({ period, content_base64: content.toString('base64'), size_bytes: content.length });
+      const snapshot = await models.ReportSnapshot.findOne({ where: { period } });
+      if (!snapshot || snapshot.report_type !== 'Mensual v2') {
+        const content = await buildExecutiveReport(await collectExecutiveReportData(models));
+        const payload = { period, report_type: 'Mensual v2', content_base64: content.toString('base64'), size_bytes: content.length, generated_at: new Date() };
+        if (snapshot) await snapshot.update(payload); else await models.ReportSnapshot.create(payload);
       }
     } catch (error) { console.error('Error de monitoreo automático:', error); }
   };

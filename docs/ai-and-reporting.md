@@ -43,6 +43,8 @@ flowchart LR
 
 Los documentos deben identificar período, fecha de generación, alcance y totales. Un snapshot preserva el resultado histórico aunque cambien los datos operativos.
 
+El informe ejecutivo consolida activos, riesgos, cumplimiento, diagnósticos, monitores, alertas, eventos, incidentes y documentos. Sus gráficas son vectores PDFKit, por lo que mantienen nitidez al ampliar o imprimir. El diseño reserva páginas separadas para resumen visual, riesgos prioritarios y plan de tratamiento.
+
 ## Evolución recomendada
 
 Para afirmar IA predictiva basada en Machine Learning se requiere un conjunto histórico etiquetado, características versionadas, evaluación contra una línea base, métricas de precisión/calibración, monitoreo de deriva y gobierno del modelo.
