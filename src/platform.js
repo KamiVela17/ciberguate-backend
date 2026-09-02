@@ -167,9 +167,9 @@ export function startAutomation(models) {
       await Promise.all(monitors.map((monitor) => executeMonitor(models, monitor)));
       const period = new Date().toISOString().slice(0, 7);
       const snapshot = await models.ReportSnapshot.findOne({ where: { period } });
-      if (!snapshot || snapshot.report_type !== 'Mensual v2') {
+      if (!snapshot || snapshot.report_type !== 'Mensual v3') {
         const content = await buildExecutiveReport(await collectExecutiveReportData(models));
-        const payload = { period, report_type: 'Mensual v2', content_base64: content.toString('base64'), size_bytes: content.length, generated_at: new Date() };
+        const payload = { period, report_type: 'Mensual v3', content_base64: content.toString('base64'), size_bytes: content.length, generated_at: new Date() };
         if (snapshot) await snapshot.update(payload); else await models.ReportSnapshot.create(payload);
       }
     } catch (error) { console.error('Error de monitoreo automático:', error); }
