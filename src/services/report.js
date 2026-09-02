@@ -21,8 +21,9 @@ export async function collectExecutiveReportData(models) {
     models.Alert.findAll(), models.SecurityEvent.count(), models.Incident.findAll(), models.EvidenceDocument.count(),
   ]);
   const compliance = controls.length ? Math.round(controls.reduce((sum, item) => sum + Number(valueOf(item, 'score', 0)), 0) / controls.length) : 0;
+  const actionableRisks = risks.filter((risk) => !['Mitigado', 'Cerrado'].includes(valueOf(risk, 'status')));
   return {
-    assets, risks, recommendations: buildRecommendations(risks),
+    assets, risks, recommendations: buildRecommendations(actionableRisks),
     metrics: {
       compliance, scans, monitors: monitors.length,
       servicesDown: monitors.filter((item) => valueOf(item, 'status') === 'Caído').length,
@@ -153,7 +154,7 @@ export function buildExecutiveReport({ assets, risks, recommendations, metrics =
     startPage('Riesgos prioritarios', 'Ordenados por puntaje inherente de mayor a menor');
     drawSectionTitle(document, 'Detalle verificable', 'Cada registro conserva activo, amenaza, nivel y función NIST.', 112);
     let y = 153;
-    [...risks].sort((a, b) => Number(valueOf(b, 'score', 0)) - Number(valueOf(a, 'score', 0))).slice(0, 10).forEach((risk, index) => {
+    [...openRisks].sort((a, b) => Number(valueOf(b, 'score', 0)) - Number(valueOf(a, 'score', 0))).slice(0, 10).forEach((risk, index) => {
       document.font('Helvetica-Bold').fontSize(10);
       const estimate = Math.max(76, 54 + document.heightOfString(String(valueOf(risk, 'title')), { width: 350 }));
       if (y + estimate > content.bottom) {
@@ -162,7 +163,7 @@ export function buildExecutiveReport({ assets, risks, recommendations, metrics =
       }
       y += drawRiskCard(document, risk, index, y) + 10;
     });
-    if (risks.length === 0) document.fillColor(palette.slate).font('Helvetica').fontSize(11).text('No hay riesgos registrados para este corte.', content.x, y, { width: content.width });
+    if (openRisks.length === 0) document.fillColor(palette.slate).font('Helvetica').fontSize(11).text('No hay riesgos abiertos para este corte.', content.x, y, { width: content.width });
 
     startPage('Plan de tratamiento', 'Acciones sugeridas según prioridad y marco de referencia');
     drawSectionTitle(document, 'Acciones recomendadas', 'Valide responsable, fecha objetivo y evidencia antes de cerrar cada acción.', 112);
