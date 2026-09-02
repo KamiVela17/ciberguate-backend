@@ -1,24 +1,33 @@
-# CiberGuate Backend
+# CiberGuate IA — Backend
 
-El MVP incluye diagnóstico web autorizado, monitoreo automático, alertas,
-evaluación ISO 27001/NIST/CIS/OWASP/MITRE, gestión documental, eventos SIEM,
-incidentes, playbooks de respuesta, reportes mensuales, MFA TOTP, OAuth2/OIDC
-configurable y auditoría. `OPENAI_API_KEY` activa el proveedor generativo; si no
-está configurada, la API identifica y utiliza el motor analítico local.
+API Node.js 22 con Express, Sequelize y PostgreSQL para activos, riesgos, diagnóstico web, monitoreo, alertas, cumplimiento, documentos, SOC/SIEM, incidentes, IA, auditoría y reportes PDF.
 
-API Node.js 22 con Express, Sequelize, PostgreSQL, Swagger y PDFKit. El pipeline
-ejecuta pruebas y auditoría; en `main` publica una imagen ECR con etiqueta igual
-al SHA completo del commit y actualiza el overlay `dev` del repositorio GitOps.
+## Inicio rápido
 
-```powershell
-npm install
-Copy-Item .env.example .env
+```bash
+npm ci
+cp .env.example .env
 npm run dev
 ```
 
-Swagger queda disponible en `/docs` y la comprobación de salud en `/health`.
-El login se realiza en `POST /api/v1/auth/login`; las demás rutas de negocio
-requieren un token Bearer. Configure `ADMIN_EMAIL`, `ADMIN_PASSWORD` y
-`JWT_SECRET` mediante variables de entorno o Secrets Manager.
-Variables del repositorio GitHub: `AWS_REGION`, `ECR_REPOSITORY` y
-`GITOPS_REPOSITORY`. Secretos: `AWS_ROLE_ARN` y `GITOPS_DEPLOY_KEY`.
+- Salud: `GET /health`
+- Swagger UI: `/docs` o `/api/docs`
+- OpenAPI JSON: `/api/openapi.json`
+- API: `/api/v1`
+
+Salvo login, MFA de login, configuración/callback OAuth2, documentación y salud, las rutas requieren `Authorization: Bearer <JWT>`.
+
+## Documentación
+
+El índice completo está en [docs/README.md](docs/README.md):
+
+- [Arquitectura](docs/architecture.md)
+- [API](docs/api.md)
+- [Modelo de datos](docs/data-model.md)
+- [Casos de uso](docs/use-cases.md)
+- [Motor de diagnóstico](docs/diagnostic-engine.md)
+- [IA y reportes](docs/ai-and-reporting.md)
+- [Seguridad](docs/security.md)
+- [Desarrollo y pruebas](docs/development-and-testing.md)
+
+En `main`, CI ejecuta pruebas y auditoría, publica en Amazon ECR una imagen con el SHA completo del commit y actualiza el repositorio GitOps.
