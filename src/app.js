@@ -48,8 +48,9 @@ function riskPayload(body) {
 }
 
 export function createApp({ models, database }) {
-  const { User, Asset, RiskAssessment, MfaSetting } = models;
+  const { User, Asset, RiskAssessment, MfaSetting, AuditLog } = models;
   const app = express();
+  const recordAudit = (request, action, resource, metadata = {}) => AuditLog.create({ actor: request.user?.email ?? request.body?.email ?? 'sistema', action, resource, ip_address: request.ip, metadata });
   const allowedOrigins = (process.env.CORS_ORIGINS ?? 'http://localhost:3000').split(',').map((value) => value.trim());
 
   app.disable('x-powered-by');
@@ -57,6 +58,8 @@ export function createApp({ models, database }) {
   app.use(cors({ origin: allowedOrigins, credentials: true }));
   app.use(express.json({ limit: '1mb' }));
   app.use('/docs', swaggerUi.serve, swaggerUi.setup(openapi, { customSiteTitle: 'CiberGuate IA API' }));
+  app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openapi, { customSiteTitle: 'CiberGuate IA API' }));
+  app.get('/api/openapi.json', (_request, response) => response.json(openapi));
 
   app.get('/health', asyncHandler(async (_request, response) => {
     await database.authenticate();
@@ -138,18 +141,18 @@ export function createApp({ models, database }) {
   app.post('/api/v1/auth/mfa/enable', asyncHandler(async (request, response) => {
     const setting = await MfaSetting.findOne({ where: { user_id: request.user.sub } });
     if (!setting || !verifyTotp(setting.secret, request.body.code)) return response.status(400).json({ detail: 'Código MFA incorrecto' });
-    await setting.update({ enabled: true }); response.json({ enabled: true });
+    await setting.update({ enabled: true }); await recordAudit(request, 'MFA_ENABLED', `user:${request.user.sub}`); response.json({ enabled: true });
   }));
   app.post('/api/v1/auth/mfa/disable', asyncHandler(async (request, response) => {
     const setting = await MfaSetting.findOne({ where: { user_id: request.user.sub } });
-    if (setting) await setting.update({ enabled: false }); response.json({ enabled: false });
+    if (setting) await setting.update({ enabled: false }); await recordAudit(request, 'MFA_DISABLED', `user:${request.user.sub}`); response.json({ enabled: false });
   }));
 
   app.get('/api/v1/assets', asyncHandler(async (_request, response) => {
     response.json(await Asset.findAll({ order: [['createdAt', 'DESC']] }));
   }));
   app.post('/api/v1/assets', asyncHandler(async (request, response) => {
-    response.status(201).json(await Asset.create(assetPayload(request.body)));
+    const asset = await Asset.create(assetPayload(request.body)); await recordAudit(request, 'ASSET_CREATED', `asset:${asset.id}`); response.status(201).json(asset);
   }));
   app.get('/api/v1/assets/:id', asyncHandler(async (request, response) => {
     const asset = await Asset.findByPk(request.params.id);
@@ -159,12 +162,12 @@ export function createApp({ models, database }) {
   app.put('/api/v1/assets/:id', asyncHandler(async (request, response) => {
     const asset = await Asset.findByPk(request.params.id);
     if (!asset) throw notFound('Activo no encontrado');
-    response.json(await asset.update(assetPayload(request.body)));
+    await asset.update(assetPayload(request.body)); await recordAudit(request, 'ASSET_UPDATED', `asset:${asset.id}`); response.json(asset);
   }));
   app.delete('/api/v1/assets/:id', asyncHandler(async (request, response) => {
     const asset = await Asset.findByPk(request.params.id);
     if (!asset) throw notFound('Activo no encontrado');
-    await asset.destroy();
+    await asset.destroy(); await recordAudit(request, 'ASSET_DELETED', `asset:${request.params.id}`);
     response.status(204).end();
   }));
 
@@ -176,6 +179,7 @@ export function createApp({ models, database }) {
     const payload = riskPayload(request.body);
     if (!await Asset.findByPk(payload.asset_id)) throw notFound('Activo no encontrado');
     const created = await RiskAssessment.create(payload);
+    await recordAudit(request, 'RISK_CREATED', `risk:${created.id}`, { score: created.score, level: created.level });
     const risk = await RiskAssessment.findByPk(created.id, { include: [{ model: Asset, as: 'asset', attributes: ['name'] }] });
     response.status(201).json(riskJson(risk));
   }));
@@ -190,13 +194,14 @@ export function createApp({ models, database }) {
     const payload = riskPayload(request.body);
     if (!await Asset.findByPk(payload.asset_id)) throw notFound('Activo no encontrado');
     await risk.update(payload);
+    await recordAudit(request, 'RISK_UPDATED', `risk:${risk.id}`, { score: risk.score, level: risk.level });
     const updated = await RiskAssessment.findByPk(risk.id, { include: [{ model: Asset, as: 'asset', attributes: ['name'] }] });
     response.json(riskJson(updated));
   }));
   app.delete('/api/v1/risks/:id', asyncHandler(async (request, response) => {
     const risk = await RiskAssessment.findByPk(request.params.id);
     if (!risk) throw notFound('Riesgo no encontrado');
-    await risk.destroy();
+    await risk.destroy(); await recordAudit(request, 'RISK_DELETED', `risk:${request.params.id}`);
     response.status(204).end();
   }));
 

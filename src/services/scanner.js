@@ -8,9 +8,17 @@ const requiredHeaders = [
 ];
 
 export function validateTarget(value) {
-  const target = new URL(String(value ?? ''));
+  const raw = String(value ?? '').trim();
+  if (!raw) throw Object.assign(new Error('Debe ingresar una URL para ejecutar el diagnóstico'), { status: 400 });
+  const normalized = /^[a-z][a-z\d+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`;
+  let target;
+  try { target = new URL(normalized); } catch { throw Object.assign(new Error('La URL ingresada no es válida'), { status: 400 }); }
   if (!['http:', 'https:'].includes(target.protocol)) throw Object.assign(new Error('El objetivo debe utilizar HTTP o HTTPS'), { status: 400 });
   if (target.username || target.password) throw Object.assign(new Error('No se permiten credenciales en la URL'), { status: 400 });
+  const hostname = target.hostname.toLowerCase();
+  if (hostname === 'localhost' || hostname === '0.0.0.0' || hostname === '::1' || hostname.startsWith('127.') || hostname.startsWith('169.254.') || hostname.startsWith('10.') || /^192\.168\./.test(hostname) || /^172\.(1[6-9]|2\d|3[01])\./.test(hostname)) {
+    throw Object.assign(new Error('No se permite diagnosticar direcciones locales o redes privadas'), { status: 400 });
+  }
   return target;
 }
 
@@ -37,4 +45,3 @@ export async function scanWebTarget(value) {
   const riskScore = Math.min(100, findings.reduce((sum, item) => sum + (weights[item.severity] ?? 1), 0));
   return { status: 'Completado', http_status: response.status, latency_ms: Date.now() - started, risk_score: riskScore, findings, summary: findings.length ? `Se identificaron ${findings.length} hallazgos de exposición web.` : 'No se identificaron hallazgos en las comprobaciones no intrusivas.' };
 }
-

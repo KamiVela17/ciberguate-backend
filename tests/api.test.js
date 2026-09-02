@@ -47,6 +47,14 @@ describe('API del MVP', () => {
     await request(app).post('/api/v1/auth/login').send({ email: 'admin@example.test', password: 'incorrecta' }).expect(401);
   });
 
+  it('publica OpenAPI y valida objetivos de diagnóstico con mensajes seguros', async () => {
+    await request(app).get('/api/openapi.json').expect(200).expect((response) => expect(response.body.openapi).toBe('3.0.3'));
+    await request(app).get('/docs/').expect('Content-Type', /html/).expect(200);
+    await request(app).get('/api/docs/').expect('Content-Type', /html/).expect(200);
+    await request(app).post('/api/v1/scans').set('Authorization', authorization).send({ target: 'no es una url' }).expect(400);
+    await request(app).post('/api/v1/scans').set('Authorization', authorization).send({ target: 'http://127.0.0.1' }).expect(400);
+  });
+
   it('opera cumplimiento, documentos, SIEM, alertas, incidentes e inteligencia analítica', async () => {
     const control = await models.ComplianceControl.create({ framework: 'ISO 27001', code: 'A.8.8', title: 'Gestión de vulnerabilidades', status: 'Pendiente', score: 0 });
     await request(app).put(`/api/v1/compliance/${control.id}`).set('Authorization', authorization).send({ status: 'Implementado', evidence: 'Acta de revisión aprobada' }).expect(200);
@@ -54,7 +62,8 @@ describe('API del MVP', () => {
     expect(compliance.body).toMatchObject({ overall_score: 100 });
 
     vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 200, headers: { 'content-security-policy': "default-src 'self'", 'strict-transport-security': 'max-age=31536000', 'x-content-type-options': 'nosniff', 'x-frame-options': 'DENY', 'referrer-policy': 'no-referrer', 'permissions-policy': 'camera=()' } })));
-    await request(app).post('/api/v1/scans').set('Authorization', authorization).send({ target: 'https://example.test' }).expect(201);
+    const scan = await request(app).post('/api/v1/scans').set('Authorization', authorization).send({ target: 'example.test' }).expect(201);
+    expect(scan.body.target).toBe('https://example.test/');
     vi.unstubAllGlobals();
     const automatic = await request(app).post('/api/v1/compliance/automatic-assessment').set('Authorization', authorization).expect(200);
     expect(automatic.body.evaluated_controls).toBe(1);

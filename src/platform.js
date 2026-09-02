@@ -62,8 +62,8 @@ export function registerPlatformRoutes(app, models) {
 
   app.get('/api/v1/scans', asyncHandler(async (_request, response) => response.json(await VulnerabilityScan.findAll({ include: [{ model: Asset, as: 'asset', attributes: ['name'] }], order: [['createdAt', 'DESC']] }))));
   app.post('/api/v1/scans', asyncHandler(async (request, response) => {
-    validateTarget(request.body.target);
-    const scan = await VulnerabilityScan.create({ target: request.body.target, asset_id: request.body.asset_id || null });
+    const target = validateTarget(request.body.target);
+    const scan = await VulnerabilityScan.create({ target: target.href, asset_id: request.body.asset_id || null });
     const result = await executeScan(models, scan);
     await audit(models, request, 'SCAN_EXECUTED', `scan:${scan.id}`, { target: scan.target });
     response.status(201).json(result);
@@ -71,8 +71,8 @@ export function registerPlatformRoutes(app, models) {
 
   app.get('/api/v1/monitors', asyncHandler(async (_request, response) => response.json(await Monitor.findAll({ include: [{ model: Asset, as: 'asset', attributes: ['name'] }], order: [['createdAt', 'DESC']] }))));
   app.post('/api/v1/monitors', asyncHandler(async (request, response) => {
-    validateTarget(request.body.target);
-    const monitor = await Monitor.create({ name: request.body.name, target: request.body.target, interval_minutes: Number(request.body.interval_minutes ?? 5), asset_id: request.body.asset_id || null, next_check_at: new Date() });
+    const target = validateTarget(request.body.target);
+    const monitor = await Monitor.create({ name: request.body.name, target: target.href, interval_minutes: Number(request.body.interval_minutes ?? 5), asset_id: request.body.asset_id || null, next_check_at: new Date() });
     await audit(models, request, 'MONITOR_CREATED', `monitor:${monitor.id}`);
     response.status(201).json(await executeMonitor(models, monitor));
   }));
@@ -138,6 +138,7 @@ export function registerPlatformRoutes(app, models) {
   app.post('/api/v1/events', asyncHandler(async (request, response) => {
     const event = await SecurityEvent.create({ source: request.body.source, event_type: request.body.event_type, severity: request.body.severity, description: request.body.description, raw_data: request.body.raw_data ?? {}, asset_id: request.body.asset_id || null, occurred_at: request.body.occurred_at ?? new Date() });
     if (['Crítica', 'Alta'].includes(event.severity)) await Alert.create({ title: `${event.event_type} detectado`, severity: event.severity, source: `SIEM: ${event.source}`, details: event.description, asset_id: event.asset_id });
+    await audit(models, request, 'SECURITY_EVENT_INGESTED', `event:${event.id}`, { severity: event.severity, source: event.source });
     response.status(201).json(event);
   }));
 
